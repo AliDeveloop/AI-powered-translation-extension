@@ -6,6 +6,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     showTranslateBox(selectedText);
   } else if (message.action === "updateTheme") {
     updateTheme(message.theme);
+  } else if (message.action === "updateApiKey") {
+    console.log("API Key ممکن است به‌روزرسانی شده باشد.");
   }
 });
 
@@ -23,7 +25,6 @@ function injectFont() {
   const fontLink = document.createElement("link");
   fontLink.href = "https://fonts.googleapis.com/css2?family=Vazirmatn&display=swap";
   fontLink.rel = "stylesheet";
-  // چک کن اگه قبلاً اضافه نشده باشه
   if (!document.querySelector(`link[href="${fontLink.href}"]`)) {
     document.head.appendChild(fontLink);
   }
@@ -45,11 +46,10 @@ function createTranslateBox(text) {
     </div>
     <label class="label">به چه زبانی ترجمه شود؟</label>
     <select id="langSelect" class="lang-select">
-      <option value="fa" selected>فارسی</option>
-      <option value="en">انگلیسی</option>
+      <option value="en" selected>انگلیسی</option>
       <option value="fr">فرانسه</option>
       <option value="es">اسپانیایی</option>
-      
+      <option value="fa">فارسی</option>
     </select>
     <button id="translateBtn" class="translate-btn">ترجمه</button>
     <div id="result" class="result"></div>
@@ -90,99 +90,105 @@ function updateTheme(theme) {
 }
 
 async function translateAndShowResult(text, targetLang) {
-  const apiKey = "AIzaSyBDi8DrJV41hEXMcNFkf8nMfPB6YpArDes";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  chrome.storage.local.get(["apiKey"], async (result) => {
+    if (!result.apiKey) {
+      alert("لطفاً ابتدا یک API Key در تنظیمات وارد کنید!");
+      return;
+    }
 
-  const prompt = `Translate the following text to ${targetLang} and return only the translated text without any additional explanation: "${text}"`;
+    const apiKey = result.apiKey;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{ text: prompt }]
-        }]
-      })
-    });
+    const prompt = `Translate the following text to ${targetLang} and return only the translated text without any additional explanation: "${text}"`;
 
-    const data = await response.json();
-    const translatedText = data.candidates[0].content.parts[0].text;
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: prompt }]
+          }]
+        })
+      });
 
-    const resultBox = document.createElement("div");
-    resultBox.id = "translationResult";
-    resultBox.className = "translation-result";
-    resultBox.style.position = "absolute";
-    resultBox.style.zIndex = "1001";
+      const data = await response.json();
+      const translatedText = data.candidates[0].content.parts[0].text;
 
-    const selection = window.getSelection();
-    const range = selection.getRangeAt(0);
-    const rect = range.getBoundingClientRect();
-    resultBox.style.top = `${rect.bottom + window.scrollY + 10}px`;
-    resultBox.style.left = `${rect.left + window.scrollX}px`;
-    resultBox.style.width = "auto";
-    resultBox.style.maxWidth = "600px";
+      const resultBox = document.createElement("div");
+      resultBox.id = "translationResult";
+      resultBox.className = "translation-result";
+      resultBox.style.position = "absolute";
+      resultBox.style.zIndex = "1001";
 
-    resultBox.innerHTML = `
-      <div class="result-header">
-        <span class="result-text">${translatedText}</span>
-        <button id="closeResultBtn" class="close-result-btn">✖</button>
-      </div>
-    `;
+      const selection = window.getSelection();
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      resultBox.style.top = `${rect.bottom + window.scrollY + 10}px`;
+      resultBox.style.left = `${rect.left + window.scrollX}px`;
+      resultBox.style.width = "auto";
+      resultBox.style.maxWidth = "600px";
 
-    document.body.appendChild(resultBox);
+      resultBox.innerHTML = `
+        <div class="result-header">
+          <span class="result-text">${translatedText}</span>
+          <button id="closeResultBtn" class="close-result-btn">✖</button>
+        </div>
+      `;
 
-    document.getElementById("closeResultBtn").onclick = () => {
-      resultBox.remove();
-    };
+      document.body.appendChild(resultBox);
 
-    // لود تم فعلی برای نتیجه
-    chrome.storage.local.get(["theme"], (result) => {
-      updateTheme(result.theme || "light");
-    });
+      document.getElementById("closeResultBtn").onclick = () => {
+        resultBox.remove();
+      };
 
-    setTimeout(() => {
-      resultBox.style.opacity = "1";
-      resultBox.style.transform = "translateY(0)";
-    }, 10);
+      chrome.storage.local.get(["theme"], (result) => {
+        updateTheme(result.theme || "light");
+      });
 
-  } catch (error) {
-    const errorBox = document.createElement("div");
-    errorBox.id = "translationError";
-    errorBox.className = "translation-error";
-    errorBox.style.position = "absolute";
-    errorBox.style.zIndex = "1001";
+      setTimeout(() => {
+        resultBox.style.opacity = "1";
+        resultBox.style.transform = "translateY(0)";
+      }, 10);
 
-    const selection = window.getSelection();
-    const range = selection.getRangeAt(0);
-    const rect = range.getBoundingClientRect();
-    errorBox.style.top = `${rect.bottom + window.scrollY + 10}px`;
-    errorBox.style.left = `${rect.left + window.scrollX}px`;
-    errorBox.style.width = "auto";
-    errorBox.style.maxWidth = "600px";
+    } catch (error) {
+      const errorBox = document.createElement("div");
+      errorBox.id = "translationError";
+      errorBox.className = "translation-error";
+      errorBox.style.position = "absolute";
+      errorBox.style.zIndex = "1001";
 
-    errorBox.innerHTML = `
-      <div class="error-header">
-        <span class="error-text">خطا در ترجمه: ${error.message}</span>
-        <button id="closeErrorBtn" class="close-error-btn">✖</button>
-      </div>
-    `;
+      const selection = window.getSelection();
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      errorBox.style.top = `${rect.bottom + window.scrollY + 10}px`;
+      errorBox.style.left = `${rect.left + window.scrollX}px`;
+      errorBox.style.width = "auto";
+      errorBox.style.maxWidth = "600px";
 
-    document.body.appendChild(errorBox);
+      errorBox.innerHTML = `
+        <div class="error-header">
+          <span class="error-text">خطا در ترجمه: ${error.message}</span>
+          <button id="closeErrorBtn" class="close-error-btn">✖</button>
+        </div>
+      `;
 
-    document.getElementById("closeErrorBtn").onclick = () => {
-      errorBox.remove();
-    };
+      document.body.appendChild(errorBox);
 
-    chrome.storage.local.get(["theme"], (result) => {
-      updateTheme(result.theme || "light");
-    });
+      document.getElementById("closeErrorBtn").onclick = () => {
+        errorBox.remove();
+      };
 
-    setTimeout(() => {
-      errorBox.style.opacity = "1";
-      errorBox.style.transform = "translateY(0)";
-    }, 10);
-  }
+      chrome.storage.local.get(["theme"], (result) => {
+        updateTheme(result.theme || "light");
+      });
+
+      setTimeout(() => {
+        errorBox.style.opacity = "1";
+        errorBox.style.transform = "translateY(0)";
+      }, 10);
+    }
+  });
 }
